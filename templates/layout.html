@@ -1,0 +1,16 @@
+  <!doctype html>
+  <html lang="en">
+    <head>
+      <title>
+      {% if title %}
+      FastAPI Blog - {{title}}
+      {%else%}
+      Fast API Blog
+      {%endif%}
+      </title>
+    </head>
+    <body>
+    {% block content%}
+    {% endblock content%}
+    </body>
+  </html>
