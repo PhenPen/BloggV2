@@ -16,7 +16,7 @@ router = APIRouter()
 @router.get("",response_model=list[PostResponse],name= 'posts')
 async def posts(db: Annotated[AsyncSession, Depends(get_db_session)]):
     # return {'posts' : pst}
-    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)))
+    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).order_by (models. Post.date_posted.desc()))
     posts = result.scalars().all()
 
     # since this return all posts , like an algorithm, can I at best just randomize it ?

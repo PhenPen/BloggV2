@@ -21,7 +21,7 @@
             <!-- <a class="me-2" href="">{{ post.author }}</a> -->
             <!-- Changed the post.author to post.author.username and changed the href from #, which is regarded as a deadlink, to urlfor as that retrieves the function and makes it a valid link-->
             
-             <a class="me-2" href=" {{ url_for('user_post_page',user_id = post.author.id) }}">{{ post.author.username }}</a>
+             <a class="me-2" href=" {{ url_for('user_posts',user_id = post.author.id) }}">{{ post.author.username }}</a>
              <!-- url_for(), always takes a function that is defined, as you can see, we defined user_post_page in our main.py , and then if any parameters in the function, we pass that in as you an see we passed in what user_id should contain -->
 
 

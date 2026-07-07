@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 # Note that we can still import it to use JSON or HTML responses from here
 
 from routers import posts as posts_router # import for the routers
-from routers import posts as users_router # import for the routers
+from routers import users as users_router # import for the routers
 
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -86,7 +86,9 @@ app.include_router(users_router.router,prefix= "/api/users" , tags= ['users'])
 async def posts_page(request: Request,db: Annotated[AsyncSession, Depends(get_db_session)]):
 
     # we would also await our db query as we are now in co-routine function
-    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)))
+    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).order_by (models. Post.date_posted.desc()))
+    # added order by so we our posts could be returned from new to old instead of old to new, I did this for every place that a group or list of posts would be sent 
+
     # Now options is like a adding settings to an sql query, just like saying , do burgers the normal way but without onions
 
     # so we are telling sql alchemy, to run the query "db.execute(select(models.Post)", and include a setting of selectinload(models.Post.author)
@@ -128,7 +130,7 @@ async def posts_page(request: Request,db: Annotated[AsyncSession, Depends(get_db
 
     # commented second former code too, Made mistakes on my part as I was writing out, I found all posts first and used a for loop to check over it which wrong, I should have used a database query instead. I will do all that up
     
-@app.get("/posts/{post_id}",include_in_schema=False)
+@app.get("/posts/{post_id}",include_in_schema=False, name = 'post_page')
 async def post_page(request: Request, post_id :int, db: Annotated[AsyncSession, Depends(get_db_session)]):
 
     result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).where(models.Post.id == post_id))
@@ -158,7 +160,7 @@ async def get_user_posts_page(request : Request, user_id : int, db: Annotated[As
     if not existing_user:
         raise FastapiHttpException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
     
-    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).where(models.Post.user_id == existing_user.id))
+    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).where(models.Post.user_id == existing_user.id).order_by (models.Post.date_posted.desc()))
     # result = db.execute(select(models.Post).where(models.Post.user_id == user_id))
 
     # I think the post author is the user id ?? 

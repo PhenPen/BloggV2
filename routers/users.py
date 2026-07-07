@@ -94,7 +94,7 @@ async def user_post_page(user_id : int, db: Annotated[AsyncSession, Depends(get_
     if not existing_user:
         raise FastapiHttpException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
     
-    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).where(models.Post.user_id == existing_user.id))
+    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).where(models.Post.user_id == existing_user.id).order_by (models. Post.date_posted.desc()))
     # result = db.execute(select(models.Post).where(models.Post.user_id == user_id))
 
     # Note that lines above (commented and not commented ) both give the same result
