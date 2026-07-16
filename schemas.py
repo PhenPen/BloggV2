@@ -7,17 +7,33 @@ class UserBase(BaseModel):
     email : EmailStr = Field(max_length = 120)
     # No need to put min_length in email because EmailStr already validates that for us 
 
-class UserResponse(UserBase):
+class UserCreate(UserBase):
+    password : str = Field(min_length= 8)  # Here we add a field for passwords and then we enforce a minimum of 8 characters for the password
+
+
+class UserResponsePublic(BaseModel):  # Now we inherit from BaseModel instead of UserBase, because we don't want to leak the user email, that is gotten when we inherit from UserBase, that's a privacy concern
+
     model_config = ConfigDict(from_attributes=True)
     id: int 
+    username : str  = Field(min_length=1, max_length=50)
     image_file : str | None
     image_path : str
 
-class UserCreate(UserBase):
-    pass
+# We also create two responses instead of one, one for public and the other for private. The private would be used internally while the public would be shown to other users when they check 
+# But as for the UserCreate, it still inherits from UserBase, because when creating a user, an email, username and password is required
+class UserResponsePrivate(UserResponsePublic):
+    email : EmailStr = Field(max_length = 120)
+
+    # The UserResponsePrivate schema inherits from UserResponsePublic because we UserResponsePublic has all the required fields required for a response , and then we add email to it to the private one 
 
 
-class UserUpdate(BaseModel):
+# The Token schema is a schema used to check if the token comes in the required fields 
+class Token(BaseModel):
+    access_token : str
+    token_type : str
+
+
+class UserUpdate(BaseModel): 
     username : str | None  = Field(min_length=1, max_length=50, default= None)
     email : EmailStr | None = Field(max_length = 120, default= None)
     # No need to put min_length in email because EmailStr already validates that for us 
@@ -41,7 +57,7 @@ class PostResponse(PostBase):
     id :int 
     user_id : int 
     date_posted :datetime  # Using a type hint of datetime automatically serializes the date into a ISO8601 format instead of str , that we won't know it is a datetime object 
-    author : UserResponse
+    author : UserResponsePublic
 
 
 class PostCreate(PostBase):

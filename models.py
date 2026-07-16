@@ -14,6 +14,9 @@ class User(Base) :
     id : Mapped[int] = mapped_column(Integer,primary_key=True, index=True)
     username : Mapped[str] = mapped_column(String(50),nullable=False, unique=True)
     email : Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    password_hash : Mapped[str] = mapped_column(String(200),nullable=False)    # Added Password Hash , Note that we should never add passwords to the database and only add password hashes 
+
+    # We used Mapped Str for the password because 200 characters should be enough to contain the hash 
     image_file : Mapped[str | None] = mapped_column(String(200), nullable=True,default=None)
 
 

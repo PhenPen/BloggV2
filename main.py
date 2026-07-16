@@ -22,7 +22,7 @@ from contextlib import asynccontextmanager  # I dunno what this does
 
 
 # from posts import posts as pst  # Commented this line out because we don't need it again as we are using a database to store posts not just a list
-from schemas import PostCreate, PostResponse, PostUpdate, UserCreate, UserResponse, UserUpdate 
+from schemas import PostCreate, PostResponse, PostUpdate, UserCreate, UserResponsePublic, UserUpdate 
 
 # Importing PostUpdate for PATCH CRUD
 
@@ -175,6 +175,25 @@ async def get_user_posts_page(request : Request, user_id : int, db: Annotated[As
     return template.TemplateResponse(request,"users_posts_finished.html",{'posts' : posts, "user" : existing_user, "title" :f'{existing_user.username} posts'})
 
 
+# I copied this from snippets of corey scafer and it's just more endpoints with templates for the register and login
+
+
+@app.get("/login", include_in_schema=False)
+async def login_page(request: Request):
+    return template.TemplateResponse(
+        request,
+        "login.html",
+        {"title": "Login"},
+    )
+
+
+@app.get("/register", include_in_schema=False)
+async def register_page(request: Request):
+    return template.TemplateResponse(
+        request,
+        "register.html",
+        {"title": "Register"},
+    )
 
 
 
