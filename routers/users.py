@@ -21,7 +21,7 @@ from schemas import PostResponse, UserCreate, UserResponsePublic, UserResponsePr
 from datetime import timedelta  # import timedelta so we could add our jwt expiry time here
 from fastapi.security import OAuth2PasswordRequestForm 
 # OAuth2PasswordRequestForm is used as the input so it could extract the password and username /email for checking 
-from auth import hash_password, verify_password, Oauth2_scheme, create_access_token, verify_access_token
+from auth import hash_password, CurrentUser, create_access_token, verify_password
 # we import our functions for hashing, creating , verifying.
 # We also import our oauth scheme 
 
@@ -124,40 +124,8 @@ async def login_for_access_token(form_data : Annotated[OAuth2PasswordRequestForm
 
 # Now this endpoint , uses the oauth2scheme to extract the current user from the jwt_token if they are the owner of the token
 @router.get("/me", response_model=UserResponsePrivate)
-async def get_current_user(jwt_token : Annotated[str, Depends(Oauth2_scheme)], db : Annotated[AsyncSession, Depends(get_db_session)]):
-    
-    user_id = verify_access_token(jwt_token)
-    if user_id is None:
-        raise FastapiHttpException(
-            status_code= status.HTTP_401_UNAUTHORIZED,
-            detail= "Invalid or expired token", 
-            headers= {"WWW-Authenticate" : "Bearer"},
-        )
-    
-    # Then we check validate if the User ID can be converted to integer
-
-    # NOTE Now I think we are only checking for integer because we are using integers for our ID, but in projects I have seen UUID was used, so for those projects, we would have to convert from str to UUID instead of int as we are doing here 
-
-    try :
-        int(user_id)
-    except (TypeError, ValueError):
-        raise FastapiHttpException(
-            status_code= status.HTTP_401_UNAUTHORIZED,
-            detail= "Invalid or expired token", 
-            headers= {"WWW-Authenticate" : "Bearer"},
-        )
-    
-    result = await db.execute(select(models.User).where(models.User.id == int(user_id)))
-    current_user_exists = result.scalars().first()
-
-    if not current_user_exists:
-        raise FastapiHttpException(
-            status_code= status.HTTP_401_UNAUTHORIZED,
-            detail= "User not found", 
-            headers= {"WWW-Authenticate" : "Bearer"},
-        )
-    
-    return current_user_exists
+async def get_current_user(current_user : CurrentUser):
+    return current_user
 
 # Here, we use UserResponsePublic as the response_model 
 @router.get("/{user_id}", response_model=UserResponsePublic)
@@ -206,13 +174,19 @@ async def user_post_page(user_id : int, db: Annotated[AsyncSession, Depends(get_
 # Now we might be confused about this route, as to why our response_model is UserResponsePrivate instead of UserResponsePublic
 # We only return UserResponsePrivate for the user if he is logged in, if he isn't we return Public response, if someone wan't to update a post, they would have to be logged in so we return the private since only the user is seeing it
 @router.patch("/{user_id}",response_model=UserResponsePrivate, name = 'update_user_partial')
-async def update_user_partial(user_id :int, updated_user : UserUpdate, db: Annotated[AsyncSession, Depends(get_db_session)]):
-   
+async def update_user_partial(user_id :int, updated_user : UserUpdate, current_user : CurrentUser, db: Annotated[AsyncSession, Depends(get_db_session)]):
+
+    # Note that authorization should always be first 
+    if user_id != current_user.id:
+        raise FastapiHttpException(status.HTTP_403_FORBIDDEN, "Not authorized to update user") 
+    
 
     # We keep this line of code because we want it to check if the user trying to change exist, we can't change a user that doesn't exist 
 
     result = await db.execute(select(models.User).where(models.User.id == user_id))
     existing_user = result.scalars().first()
+
+    
 
     if not existing_user:
         raise FastapiHttpException(status_code=status.HTTP_404_NOT_FOUND, detail = "User not found")
@@ -275,7 +249,11 @@ async def update_user_partial(user_id :int, updated_user : UserUpdate, db: Annot
 
 
 @router.delete('/{user_id}',status_code=status.HTTP_204_NO_CONTENT,name = 'delete_user')
-async def delete_user(user_id : int, db: Annotated[AsyncSession, Depends(get_db_session)]):
+async def delete_user(user_id : int, current_user : CurrentUser, db: Annotated[AsyncSession, Depends(get_db_session)]):
+
+    # Note that authorization should always be first 
+    if user_id != current_user.id:
+        raise FastapiHttpException(status.HTTP_403_FORBIDDEN, "Not authorized to delete user") 
 
     # check for if user exists
     result = await db.execute(select(models.User).where(models.User.id == user_id))

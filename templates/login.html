@@ -25,6 +25,7 @@
 {% block scripts %}
     <script type="module">
     import { getErrorMessage, showModal } from '/static/js/utils.js';
+    import { setToken } from '/static/js/auth.js';
 
     const loginForm = document.getElementById('loginForm');
 
@@ -44,7 +45,7 @@
           const data = await response.json();
 
           // Store token in localStorage
-          localStorage.setItem('access_token', data.access_token);
+          setToken(data.access_token);
 
           // Show success modal and redirect to home
           document.getElementById('successMessage').textContent =

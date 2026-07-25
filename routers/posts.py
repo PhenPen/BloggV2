@@ -10,6 +10,7 @@ from fastapi import HTTPException as FastapiHttpException
 import models
 from database import get_db_session
 from schemas import PostCreate, PostResponse, PostUpdate
+from auth import CurrentUser  
 
 router = APIRouter()
 
@@ -43,7 +44,7 @@ async def get_post(post_id :int, db: Annotated[AsyncSession, Depends(get_db_sess
 
 
 @router.put("/{post_id}",response_model=PostResponse, name = 'update_post_full')
-async def update_post_full(post_id :int, updated_post : PostCreate, db: Annotated[AsyncSession, Depends(get_db_session)]):
+async def update_post_full(post_id :int, updated_post : PostCreate,current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db_session)]):
     #for post in pst:
      #   if post['id'] == post_id:
       #      return {'posts' : post}
@@ -59,18 +60,26 @@ async def update_post_full(post_id :int, updated_post : PostCreate, db: Annotate
 
     # We will also check if the updated post has the same the user id, that is whether we are trying to change it from a user to another user.
     # if it is the same user, then no issue. But if it is a different user, we would have to check if that different user exists in the database before changing the post to that user
-    if updated_post.user_id != existing_post.user_id :
-        result = await db.execute(select(models.User).where(models.User.id == updated_post.user_id))
-        existing_user = result.scalars().first()
+    
+    # We comment out this check because, we only want the owner of the post , which is the current user to edit and the CurrentUser Dependency already checks if the user exists 
+
+    #if updated_post.user_id != existing_post.user_id :
+    #    result = await db.execute(select(models.User).where(models.User.id == updated_post.user_id))
+    #    existing_user = result.scalars().first()
 
         # Then we check for if the new user exists in the database already, else we return an error 
-        if not existing_user:
-            raise FastapiHttpException(status_code=status.HTTP_404_NOT_FOUND, detail = "User not found")
+    #    if not existing_user:
+    #        raise FastapiHttpException(status_code=status.HTTP_404_NOT_FOUND, detail = "User not found")
+
+
+
+    if existing_post.user_id != current_user.id:
+        raise FastapiHttpException(status.HTTP_403_FORBIDDEN, "Not authorized to update post")
 
 
     existing_post.title = updated_post.title
     existing_post.content= updated_post.content
-    existing_post.user_id = updated_post.user_id
+    #existing_post.user_id = updated_post.user_id  # We comment out this line because we aren't using it
 
     # db.add(existing_post) # We didn't do db.add, why ? Because it already exists ? 
     await db.commit() # Also, just committing, won't it clash with the posts that already had the same values
@@ -84,7 +93,7 @@ async def update_post_full(post_id :int, updated_post : PostCreate, db: Annotate
 
 
 @router.patch("/{post_id}",response_model=PostResponse, name = 'update_post_partial')
-async def update_post_partial(post_id :int, updated_post : PostUpdate, db: Annotated[AsyncSession, Depends(get_db_session)]):
+async def update_post_partial(post_id :int, updated_post : PostUpdate,current_user : CurrentUser, db: Annotated[AsyncSession, Depends(get_db_session)]):
    
 
     result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).where(models.Post.id == post_id))
@@ -94,6 +103,9 @@ async def update_post_partial(post_id :int, updated_post : PostUpdate, db: Annot
     if not existing_post:
         raise FastapiHttpException(status_code=status.HTTP_404_NOT_FOUND, detail = "Post not found")
     
+    # Added the check below because we are checking if current user id is the same as the post we are attempting to update
+    if existing_post.user_id != current_user.id:
+        raise FastapiHttpException(status.HTTP_403_FORBIDDEN, "Not authorized to update post")
 
     # def update_post_full and def update_post_partial are the same , just that we removed the check for user_id.
     # We do not want someone changing ownership of a post through partial update (patch)
@@ -125,13 +137,17 @@ async def update_post_partial(post_id :int, updated_post : PostUpdate, db: Annot
 
 # Note that we used a status code of 204, 204 is often used with delete and returns no content, so I don't think we are expecting a return for this function
 @router.delete("/{post_id}",status_code=status.HTTP_204_NO_CONTENT, name = 'delete_post')
-async def delete_post(post_id :int, db: Annotated[AsyncSession, Depends(get_db_session)]):
+async def delete_post(post_id :int,current_user : CurrentUser, db: Annotated[AsyncSession, Depends(get_db_session)]):
 
     result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).where(models.Post.id == post_id))
     existing_post = result.scalars().first()
 
     if not existing_post:
         raise FastapiHttpException(status_code=status.HTTP_404_NOT_FOUND, detail = "Post not found")
+    
+    # Added the code below to only allow the current user to be able to delete his post
+    if existing_post.user_id != current_user.id:
+        raise FastapiHttpException(status.HTTP_403_FORBIDDEN, "Not authorized to delete post")
     
     await db.delete(existing_post)   # Remember in db.add, we didn't await but in db.delete, we had to await, this because db.delete is actually an I/O task 
     await db.commit()
@@ -147,7 +163,7 @@ async def delete_post(post_id :int, db: Annotated[AsyncSession, Depends(get_db_s
 
 
 @router.post("",response_model=PostResponse,status_code=status.HTTP_201_CREATED)
-async def create_post(post:PostCreate, db: Annotated[AsyncSession, Depends(get_db_session)]):
+async def create_post(post:PostCreate, current_user : CurrentUser, db: Annotated[AsyncSession, Depends(get_db_session)]):
 
     # new_id = max([p["id"] for p in pst]) + 1 if pst else 1 
 
@@ -165,13 +181,17 @@ async def create_post(post:PostCreate, db: Annotated[AsyncSession, Depends(get_d
    # Moreover, if that user doesn't exist in the database, Using user 9999 as example again, the database would throw an error but if we check for it, we can silently generate our own error , instead of the database generating an unfriendly error 
    # I think this is also a foreign key check, as in the models table, Post.user_id is a foreign key from id attribute of the users table (class User)
 
-   result = await db.execute(select(models.User).where(models.User.id == post.user_id))
-   existing_user = result.scalars().first()
 
-   if not existing_user:
-       raise FastapiHttpException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+# Now below we comment this out, because since we passed CurrentUser as the type hint for current_user and f you remember from auth.py that CurrentUser has a dependency So when the function runs, the Depends runs and authentication is ran before authorization is ran. So if authentication is failed, authorization won't even run at all  
+   #result = await db.execute(select(models.User).where(models.User.id == post.user_id))
+   #existing_user = result.scalars().first()
+
+   #if not existing_user:
+    #   raise FastapiHttpException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
    
-   new_post = models.Post(title = post.title, content = post.content, user_id = post.user_id)
+   #new_post = models.Post(title = post.title, content = post.content, user_id = post.user_id)
+   new_post = models.Post(title = post.title, content = post.content, user_id = current_user.id) # Now instead of post.user_id for the user_id, we use the current_user which uses the Depends to get the current user id automatically, so it becomes current_user.id (it is also .id because it uses the User Schema) 
+
    
    db.add(new_post)  # I didn't add await here because 1) db.add returns None , and None is not awaitable and 2) db.add doesn't actually do any I/O, it just adds the object memory for it to wait to be committed 
    await db.commit()

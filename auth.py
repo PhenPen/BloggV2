@@ -3,6 +3,14 @@ from pwdlib import PasswordHash
 from fastapi.security import OAuth2PasswordBearer
 from config import settings
 import jwt
+from fastapi import Depends, status
+from main import FastapiHttpException
+from sqlalchemy import select
+from typing import Annotated
+from sqlalchemy.ext.asyncio import AsyncSession
+import models
+from database import get_db_session
+
 
 
 password_hash = PasswordHash.recommended()
@@ -54,10 +62,49 @@ def verify_access_token(token):
             token,
             key=settings.jwt_secret_key.get_secret_value(), #Since the in our settings, the secret key is of type SecretStr, calling secretkey, without the get_secret_value() function won't return a string but asterisk, which can't be converted to string and will cause a traceback.
             # Check obsidian for the traceback caused and whatsapp
-            algorithms=settings.jwt_algorithm,
+            algorithms=[settings.jwt_algorithm], # Note that this is a list instead of a string because decoding uses algorithms and not just a single algorithm.
+            # We can also see it from the create_access_token , it uses a parameter of algorithm while the decode uses algorithms
             options={"require": ["exp", "sub"]},
         )
     except jwt.InvalidTokenError:
         return None
     else:
         return payload.get("sub")
+ 
+
+async def get_current_user(jwt_token : Annotated[str, Depends(Oauth2_scheme)], db : Annotated[AsyncSession, Depends(get_db_session)]):
+    
+    user_id = verify_access_token(jwt_token)
+    if user_id is None:
+        raise FastapiHttpException(
+            status_code= status.HTTP_401_UNAUTHORIZED,
+            detail= "Invalid or expired token", 
+            headers= {"WWW-Authenticate" : "Bearer"},
+        )
+    
+    # Then we check validate if the User ID can be converted to integer
+
+    # NOTE Now I think we are only checking for integer because we are using integers for our ID, but in projects I have seen UUID was used, so for those projects, we would have to convert from str to UUID instead of int as we are doing here 
+
+    try :
+        int(user_id)
+    except (TypeError, ValueError):
+        raise FastapiHttpException(
+            status_code= status.HTTP_401_UNAUTHORIZED,
+            detail= "Invalid or expired token", 
+            headers= {"WWW-Authenticate" : "Bearer"},
+        )
+    
+    result = await db.execute(select(models.User).where(models.User.id == int(user_id)))
+    current_user_exists = result.scalars().first()
+
+    if not current_user_exists:
+        raise FastapiHttpException(
+            status_code= status.HTTP_401_UNAUTHORIZED,
+            detail= "User not found", 
+            headers= {"WWW-Authenticate" : "Bearer"},
+        )
+    
+    return current_user_exists
+
+CurrentUser = Annotated[models.User,Depends(get_current_user)]  # We create a variable that already contains annotated , so we can just call that variable instead of typing Annotated every time

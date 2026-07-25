@@ -63,8 +63,10 @@ app.mount('/static',StaticFiles(directory="static"),name="static") #Mounting fil
 app.mount('/media',StaticFiles(directory="media"),name="media")  # Mounting files for media
 
 # Adding routers from routers and to main.py for organization
-app.include_router(posts_router.router,prefix= "/api/posts" , tags= ['posts'])
-app.include_router(users_router.router,prefix= "/api/users" , tags= ['users'])
+app.include_router(posts_router.router,prefix= "/api/posts" , tags= ['Posts'])
+app.include_router(users_router.router,prefix= "/api/users" , tags= ['Users'])
+
+# changed router tags to Title case (Pascal case perharps > )
 
 # I'm still a bit confused as to why the names for the endpoints are posts and home, I think it has to do with displaying it in the schema documentation.
 # I will check it later  # Checked this , the reason why the name exists is so that if we change the name of the function, it's reference name would still be the name we gave it in the decorator.
@@ -193,6 +195,15 @@ async def register_page(request: Request):
         request,
         "register.html",
         {"title": "Register"},
+    )
+
+
+@app.get("/account", include_in_schema=False)
+async def account_page(request: Request):
+    return template.TemplateResponse(
+        request,
+        "account_finished.html",
+        {"title": "Account"},
     )
 
 
