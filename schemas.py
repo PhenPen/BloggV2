@@ -37,8 +37,11 @@ class UserUpdate(BaseModel):
     username : str | None  = Field(min_length=1, max_length=50, default= None)
     email : EmailStr | None = Field(max_length = 120, default= None)
     # No need to put min_length in email because EmailStr already validates that for us 
-    image_file : str | None  = Field(min_length=1, max_length=200
-    , default= None)
+    # image_file : str | None  = Field(min_length=1, max_length=200 ,default= None)
+
+    # Now we would want to remove image file from the user update schema for 2 reasons
+    # 1. Profile pictures should only be changed through the endpoints for profile pictures and not through the normal update pictures, because the profile pictures uses multipart , while normal endpoints uses JSON
+    # 2. image_file now poses a security risk as instead of only updating the image_file and image_path from the specified endpoints , a random user could change it by assigning any random string , and if that string is somehow linked to another user profile picture, they can have access to it and use it, and even in a worse case scenario, if they delete that random string they just assigned, while delete the actual owner of the profile picture
 
     # Wanted to include a property decorator to create image_path and inside the image_path, will do if image_file is None and so onc, but I didn't know how to complete the logic and I think exclude_unset = True, would take care of the None and give back the old value so that issue should be taken care of 
 

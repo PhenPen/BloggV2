@@ -12,5 +12,9 @@ class Settings(BaseSettings):
     jwt_algorithm : str = "HS256"
     jwt_token_expiry_mins :int = 30
 
+    max_upload_size_bytes : int = 5 * 1024 * 1024
+    # setting a max upload size is a good practice and is used prevent huge file uploads, and it would be mostly be used for uploading our profile picture
+    # why 5 * 1024 * 1024 though ? 
+
 
 settings = Settings()  # type: ignore[call-arg] 

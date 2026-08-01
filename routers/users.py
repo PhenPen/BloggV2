@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends,status
+from fastapi import APIRouter,Depends,status, UploadFile
 from fastapi import HTTPException as FastapiHttpException
 from sqlalchemy import select, func 
 # we imported func so we can write queries that are case insensitive ,basically queries that check for both cases of letters (uppercase and lowercase) ; In a blog or social media website, we would want our usernames to be unique, but while displaying the username in the way the user passed it to us, we would want to convert it to lowercase
@@ -8,6 +8,12 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from PIL import UnidentifiedImageError # This error is raised when an image cannot be opened or any errors for the image occurs 
+# UploadFile is a library from fastAPI used to upload files 
+
+from image_utils import process_profile_image, delete_profile_image # we import our functions used for processing the image and deleting the image in case a user wants upload a picture or delete a profile image too 
+
+from starlette.concurrency import run_in_threadpool # Not sure of what this does 
 
 
 import models
@@ -261,8 +267,78 @@ async def delete_user(user_id : int, current_user : CurrentUser, db: Annotated[A
 
     if not existing_user:
         raise FastapiHttpException(status_code=status.HTTP_404_NOT_FOUND, detail = "User not found")
-    
+
+    # Now when deleting the user, we would want to delete any file associated with it, else we would be leaving orphaned files on disk, when we say orphaned files, we mean files that are not linked to anything. For example, if we delete the user, we would an image file that is not linked to anyone, so we would have to take care of that here
+
+    old_filename = existing_user.image_file # And like delete_users_picture, we would set the file name to a variable first, as we would want to only delete the profile picture only when the commit was successful
+
     await db.delete(existing_user)
     await db.commit()
 
+    if old_filename:
+        delete_profile_image(old_filename)
 
+        # We then delete it after a successful commit # Also note that we are deleting the file or file path, not deleting from the database so we aren't meant to use db.delete, the only thing stored in the database is the filename, and that would change after committing 
+
+
+
+@router.patch("/{user_id}/picture", response_model= UserResponsePrivate)
+async def upload_profile_picture(file : UploadFile, user_id : int, current_user : CurrentUser, db : Annotated[AsyncSession, Depends(get_db_session)]):
+
+    #Authorization check
+    if current_user.id != user_id:
+        raise FastapiHttpException(status_code= status.HTTP_403_FORBIDDEN, detail= "Not authorized to update this user's profile picture")
+
+    #  ??? Looking at this, I feel it's kinda weird that we are still inputting the user_id , when we could have just gotten it from the current_user id or in twitter I know you could view other people profile picture, so I'm guessing this check could be for that 
+
+    content = await file.read() # reading the file or the uploaded profile picture in this case # Note that here, it isn't opened as an Image yet but rather it is just opened as a normal file, same way an image could be opened as binary instead of the default image format
+
+    if len(content) > settings.max_upload_size_bytes :
+        raise FastapiHttpException(status_code = status.HTTP_400_BAD_REQUEST, detail=f"File size too large. Maximum size is {settings.max_upload_size_bytes // (1024 *1024)} MB")
+    # A bit baffled as to why we could not set the MB directly in the settings file configuration but it is okay though, I understand this too 
+
+    # Remember we just opened the image as a file to read the content size, now in the try statement condition below, we would attempt to open the content as an Image instead of just a file, now if PIL (which is pillow) can't open it then it returns an error, this is method is much better that assuming the content file type or getting the file type from the user which can pass mischievous file format instead of the usual default image format types
+    try : 
+        new_filename = await run_in_threadpool(process_profile_image, content) # What is a threadpool
+
+        # It seems the reason for the threadpool stuff is that we are trying to run a sync function in an async endpoint , which would block the endpoint, so instead of doing that we run the sync function in a separate thread , while the async loop runs ? 
+
+    except UnidentifiedImageError as err:  # If file is not an image or file can't be opened, then this error is raised 
+        raise FastapiHttpException(status_code= status.HTTP_400_BAD_REQUEST, detail = "Invalid image file.  Please upload a valid image (JPEG, PNG, GIF, WebP).",) from err
+    # I don't get the from err
+
+    old_filename = current_user.image_file # we get the current user image file name or profile picture name, if the user hasn't set a profile picture before it should still remain the static default profile picture
+
+    current_user.image_file = new_filename
+    # Then we change the user profile picture to the new profile picture
+
+    await db.commit()
+    await db.refresh(current_user) # we commit (save) and refresh the user
+
+    if old_filename:
+        delete_profile_image(old_filename) # here we delete the old file name if it exists, notice we didn't run this in a separate threadpool, this is because we are just removing the file and not running a full cpu bound operation, unlike the process_profile_image
+
+    # Now if you notice, we are committing first before before deleting the old file name, this is because if we have any weird scenario whereby the database commit fails , we instead of deleting the old file name already , we would still have the file name.
+    # In this case, we would make sure the database is committed first, and only then can we delete the old file name 
+    return current_user
+
+
+@router.delete("/{user_id}/picture", response_model= UserResponsePrivate)
+async def delete_user_picture(user_id : int, current_user : CurrentUser, db : Annotated[AsyncSession, Depends(get_db_session)]):
+
+    #Authorization check
+    if current_user.id != user_id:
+        raise FastapiHttpException(status_code=status.HTTP_403_FORBIDDEN, detail= "Not authorized to delete this user's profile picture")
+
+    old_file_name = current_user.image_file   # Then before do anything, we save the old file name so in case there are issues such as error while committing , we would still have the file location instead of losing it all
+
+    if old_file_name is None:  # If no profile picture, it returns this 
+        raise FastapiHttpException(status_code=status.HTTP_400_BAD_REQUEST, detail = "No profile picture to delete")
+
+    current_user.image_file = None  # Then if it deletes , it then sets the image_file of the user to None, which is the file name of the profile picture
+    await db.commit()
+    await db.refresh(current_user)
+
+    delete_profile_image(old_file_name)  # we then commit and refresh and only after doing those things successfully, we delete the old file name 
+
+    return current_user
