@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status, Query
 from fastapi.exceptions import HTTPException as FastapiHttpException
 from fastapi.exceptions import RequestValidationError
 # from fastapi.responses import JSONResponse   # I commented this since we were using it for our own exception handlers but since we imported the default exception handlers , we don't need the response
@@ -32,11 +32,12 @@ from typing import Annotated # Now what is Annotated
 from sqlalchemy.ext.asyncio import AsyncSession # Imported async session to use instead of normal sessions as sync would normally use
 
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 import models  # We import all our database models   
 from database import Base, database_engine, get_db_session  # We import Base which is just Declarative Base in a nutshell, database_engine which is our engine for database connections and get_db_session, which is our function for returning database sessions 
 
+from config import settings  # We import settings because we want to using the post_per_page setting
 
 
 # We can no longer use the line below since we are converting to async , that is because the line below is used for synchronous functions
@@ -87,8 +88,12 @@ app.include_router(users_router.router,prefix= "/api/users" , tags= ['Users'])
 @app.get('/posts', include_in_schema=False,name='posts')
 async def posts_page(request: Request,db: Annotated[AsyncSession, Depends(get_db_session)]):
 
+
+    total_post_count_query = await db.execute(select(func.count()).select_from(models.Post))
+    total_post_count = total_post_count_query.scalar() or 0
+
     # we would also await our db query as we are now in co-routine function
-    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).order_by (models. Post.date_posted.desc()))
+    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).order_by (models. Post.date_posted.desc()).limit(settings.posts_per_page))    # Compared to our API route, there is no offset because this is home page , so we would return all posts without skipping 
     # added order by so we our posts could be returned from new to old instead of old to new, I did this for every place that a group or list of posts would be sent 
 
     # Now options is like a adding settings to an sql query, just like saying , do burgers the normal way but without onions
@@ -99,8 +104,11 @@ async def posts_page(request: Request,db: Annotated[AsyncSession, Depends(get_db
 
     # So apparently, there is eager and lazy loading 
     posts = result.scalars().all()
-    return template.TemplateResponse(request,'home_finished.html',{"posts" : posts,"title" : "Home"})
-    
+
+    has_more = len(posts) < total_post_count
+
+    return template.TemplateResponse(request,'home_finished.html',{"posts" : posts,"title" : "Home", "limit" : settings.posts_per_page, "has_more" : has_more})
+
 
 
 
@@ -152,7 +160,7 @@ async def post_page(request: Request, post_id :int, db: Annotated[AsyncSession, 
 
 # User 
 @app.get('/users/{user_id}/posts',include_in_schema=False,name='user_posts')
-async def get_user_posts_page(request : Request, user_id : int, db: Annotated[AsyncSession, Depends(get_db_session)]):
+async def get_user_posts_page(request : Request, user_id : int, db: Annotated[AsyncSession, Depends(get_db_session)], skip : Annotated[int, Query(ge=0)] = 0, limit : Annotated[int, Query(ge=1, le=100)] = 10):
 
     result = await db.execute(select(models.User).where(models.User.id == user_id)) 
 
@@ -161,8 +169,13 @@ async def get_user_posts_page(request : Request, user_id : int, db: Annotated[As
 
     if not existing_user:
         raise FastapiHttpException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
-    
-    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).where(models.Post.user_id == existing_user.id).order_by (models.Post.date_posted.desc()))
+
+
+    count_result = await db.execute(select(func.count()).select_from(models.Post).where(models.Post.user_id == user_id))
+    total = count_result.scalar() or 0
+
+
+    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).where(models.Post.user_id == existing_user.id).order_by (models.Post.date_posted.desc()).offset(skip).limit(limit))
     # result = db.execute(select(models.Post).where(models.Post.user_id == user_id))
 
     # I think the post author is the user id ?? 
@@ -172,9 +185,12 @@ async def get_user_posts_page(request : Request, user_id : int, db: Annotated[As
 
     # Why do we use name = 'user_posts' 
 
+
     posts = result.scalars().all()
 
-    return template.TemplateResponse(request,"users_posts_finished.html",{'posts' : posts, "user" : existing_user, "title" :f'{existing_user.username} posts'})
+    has_more = (skip + len(posts)) < total
+
+    return template.TemplateResponse(request,"users_posts_finished.html",{'posts' : posts, "user" : existing_user, "title" :f'{existing_user.username} posts', "limit" : settings.posts_per_page, "has_more": has_more})
 
 
 # I copied this from snippets of corey scafer and it's just more endpoints with templates for the register and login
@@ -207,7 +223,25 @@ async def account_page(request: Request):
     )
 
 
+@app.get("/forgot-password", include_in_schema=False)  # We then added endpoints for forgot-password
+async def forgot_password_page(request: Request):
+    return template.TemplateResponse(
+        request,
+        "forgot_password.html",
+        {"title": "Forgot Password"},
+    )
 
+
+@app.get("/reset-password", include_in_schema=False) # We then added endpoints for reset-password, the reset-password route is called after when the user clicks on the link inside the email
+async def reset_password_page(request: Request):
+    response = template.TemplateResponse(
+        request,
+        "reset_password.html",
+        {"title": "Reset Password"},
+    )
+    response.headers["Referrer-Policy"] = "no-referrer"   # we also added this in this route for security, normally when a page is opened from another page or a link is sent, the browser sends a referrer header from the previous page to the new site, to show what page you came from.
+    # While this is good, this can cause security issues, if you remember, our previous page or link contained our token as a query parameter, so it sends the token along with the link to the new website via the referral header. Setting this to no-referrer, stops that from being sent
+    return response
 
 
 

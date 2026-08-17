@@ -10,6 +10,8 @@ from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 import models
 from database import get_db_session
+import hashlib
+import secrets
 
 
 
@@ -24,6 +26,13 @@ def hash_password(password):
 
 def verify_password(plain_password, hashed_password):
     return password_hash.verify(plain_password, hashed_password)
+
+
+def generate_reset_token() -> str:
+    return secrets.token_urlsafe(32)  # Why is it url_safe, it seems that every hash stuff seems to be multiplied by 2 to get the actual number
+
+def hash_reset_token(token : str) -> str :
+    return hashlib.sha256(token.encode()).hexdigest()   # token encode, coverts it to bytes and hexdigests gives back a hexadecimal string
 
 
 def create_access_token(data: dict, minutes: timedelta | None = None):

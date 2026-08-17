@@ -92,3 +92,35 @@ class PostUpdate(BaseModel):
 
 # We also didn't include user_id in the PostUpdate, this is because it is considered wrong to change ownership of an object through a PATCH CRUD. Example : Changing ownership of a post through a PATCH is considered wrong
 
+class PaginatedPostResponse(BaseModel):
+    posts : list[PostResponse]
+    total :int
+    skip : int
+    limit : int
+    has_more : bool
+
+    # We create a schema that is for pagination, and we add the following data, post, total, skip, limit and has_more 
+    # post is just all the posts that we are meant to return as we can see it returns the posts using our former response schema PostResponse
+    # total is the count of all the posts we have in the database
+    # skip is the also know as offset, is used to refer to skipping an amount of something, for example, if we say skip 10, it means we would start displaying from the 11th post
+    # limit is the maximum number of posts that should be on screen, or that we are sending as the response, if we say limit is 10, then the maximum amount of posts that must be sent is 10, the posts could be 2, 4 7 but it must not pass 10
+    # has_more is a boolean that is used to tell us whether more posts still exists, for example, if we have a total of 44 posts, and skip and limit is both 10, 10 we have 10 + 10 posts that has been show, however, we have a total of 44 posts meaning 44 -20 = 24 posts hasn't been shown
+
+
+    # Now , skip (offset) and limit is used a lot for pagination, which is not loading at once and loading them page by page, for example, we could have a blog like we are doing now, sending all the posts at once just makes the API slower, instead of doing that we could paginate the API by adding a skip (offset) of 0 and a limit of 10, doing this will send the first page with 10 posts, the second page will send with an offset of 10 and a limit of 10 , giving the next page the next 10 posts wth a limit of 10 and so on, so we get different pages
+    # Also the main reason we have the has_more attribute is to make the frontend code easier, The frontend code can just easily check for the has_more attribute and if true it tries to load more posts, else it stops loading posts 
+
+
+# Password reset schemas
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr = Field(max_length=120)   #Schema for when the user forgets password, at this stage, I think we would send the reset token link to the user
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8)  #Schema for resetting password, as it would take the token and then the user new password
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)   #Schema for changing password, if the user wants to change it 

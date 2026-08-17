@@ -1,7 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, status, Query
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,20 +9,47 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException as FastapiHttpException
 import models
 from database import get_db_session
-from schemas import PostCreate, PostResponse, PostUpdate
+from schemas import PostCreate, PostResponse, PostUpdate, PaginatedPostResponse
 from auth import CurrentUser  
 
 router = APIRouter()
 
-@router.get("",response_model=list[PostResponse],name= 'posts')
-async def posts(db: Annotated[AsyncSession, Depends(get_db_session)]):
+@router.get("",response_model=PaginatedPostResponse, name= 'posts')
+async def posts(db: Annotated[AsyncSession, Depends(get_db_session)], 
+                skip : Annotated[int, Query(ge=0)] = 0, 
+                limit : Annotated[int, Query(ge=1, le=100)] = 10,
+                ):
+
     # return {'posts' : pst}
-    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).order_by (models. Post.date_posted.desc()))
+
+    # Now instead of sending all the posts first, we would first count the number of posts that exists and we would this with a count query
+    total_post_count_query = await db.execute(select(func.count()).select_from(models.Post)) # I used where here before, I need to learn the difference between selectfrom and where as well as other SQL commands
+    total_post_count = total_post_count_query.scalar() or 0   # Interesting case here but we added or 0 here so if there is no Post yet, .scalar() would give None and then python will pick 0 as None is a non truthy value
+
+    # Now we would just add .offset and .limit to our SQLAlchemy query, Learn about OFFSET and LIMIT in SQL
+    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).order_by (models.Post.date_posted.desc()).offset(skip).limit(limit))
     posts = result.scalars().all()
+    # Also note that in the result of our query about, we also have order_by, though we included it before, it is actually very important for Pagination, without order_by, our posts can be returned either ascending or descending and we won't be sure, so in order to be exact, we set it ourselves
+
+    # Now remember our has_more bool from our schema, we would create it here
+    # To create the bool, we would calculate if the sum of our OFFSET and number of posts currently displayed (basically the LIMIT for the page) is equal to or more that the total number of posts, if it is more than or equal to the number of posts, our has_more would be false because there is no more posts to load but if it is less than the total number of posts then, has_more would be true because it has more posts to load
+
+    has_more = (skip + len(posts)) < total_post_count
+
+
 
     # since this return all posts , like an algorithm, can I at best just randomize it ?
     # Like lets say use the random library to randomize the final post
-    return posts
+    # return posts   # Now instead of returning all posts , we return the paginated response schema, with the posts and other fields
+    return PaginatedPostResponse(
+        posts = [PostResponse.model_validate(post) for post in posts],
+        total = total_post_count,
+        skip = skip,
+        limit = limit,
+        has_more = has_more
+    )
+    # for posts, we would use the model_validate attribute of the schema class to validate each individual post as we loop through it, and with all the posts validated, that becomes our set of posts 
+    # When FastAPI handles the response model, FastAPI handles that automatically but now are constructing the object ourselves as we want to pass the response in the schema not the response only for FastAPI to validate against
 
 
 # API Posts

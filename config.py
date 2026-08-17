@@ -16,5 +16,19 @@ class Settings(BaseSettings):
     # setting a max upload size is a good practice and is used prevent huge file uploads, and it would be mostly be used for uploading our profile picture
     # why 5 * 1024 * 1024 though ? 
 
+    posts_per_page : int = 10   # We set the posts that should be set in a page as a default in our settings, so we can edit in one place, 
+
+    reset_expire_token_mins : int = 60
+
+    # Email configuration
+    mail_server: str = "localhost"
+    mail_port: int = 587
+    mail_username: str = ""
+    mail_password: SecretStr = SecretStr("")
+    mail_from: str =  "noreply@example.com"
+    mail_use_tls: bool = True    # Learnt that TLS meant transport layer security, would have to check up on that later
+
+    frontend_url: str = "http://localhost:8000"
+
 
 settings = Settings()  # type: ignore[call-arg] 

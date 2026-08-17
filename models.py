@@ -22,6 +22,10 @@ class User(Base) :
 
     posts : Mapped[list[Post]] = relationship(back_populates="author", cascade='all, delete-orphan')
 
+    # reset_tokens : Mapped[PasswordResetToken] = relationship(back_populates="user") # I did this 
+    reset_tokens : Mapped[list[PasswordResetToken]] = relationship(back_populates="user", cascade="all, delete-orphan") # Corey did this
+    # Why a list of tokens, why not one token or so ?
+
 
     # Came back to add cascade so I can cascade delete a user posts , which basically means deleting all a user post 
 
@@ -94,3 +98,30 @@ class Post(Base):
     author : Mapped[User] = relationship(back_populates="posts")
 
 # In a database, instead of searching everywhere, Index helps to find things easier, Just like the index in a textbook
+
+
+
+
+# We would then create a new model for storing our PasswordResetTokens, We use a database to track the tokens and see it's state
+# Basically, two conditions
+# - Whether token has been used (We can't invalidate JSON tokens even if it has been used but hasn't expired)
+# - Whether the token has expired 
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)  #It's String(64) because the function producing the token hash must always be 64 characters, it could be a different number for another API but for this API, we standardized 64 characters
+
+    # Also we are storing the hash of the token , not the token itself, and this is often good practice for security reasons
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+    )
+
+    user: Mapped[User] = relationship(back_populates="reset_tokens")

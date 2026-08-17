@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter,Depends,status, UploadFile
+from fastapi import APIRouter,Depends,status, UploadFile, Query, BackgroundTasks
 from fastapi import HTTPException as FastapiHttpException
 from sqlalchemy import select, func 
 # we imported func so we can write queries that are case insensitive ,basically queries that check for both cases of letters (uppercase and lowercase) ; In a blog or social media website, we would want our usernames to be unique, but while displaying the username in the way the user passed it to us, we would want to convert it to lowercase
@@ -12,26 +12,28 @@ from PIL import UnidentifiedImageError # This error is raised when an image cann
 # UploadFile is a library from fastAPI used to upload files 
 
 from image_utils import process_profile_image, delete_profile_image # we import our functions used for processing the image and deleting the image in case a user wants upload a picture or delete a profile image too 
+from email_utils import send_password_reset_email
 
 from starlette.concurrency import run_in_threadpool # Not sure of what this does 
 
 
 import models
 from database import get_db_session
-from schemas import PostResponse, UserCreate, UserResponsePublic, UserResponsePrivate, UserUpdate, Token
+from schemas import PostResponse, UserCreate, UserResponsePublic, UserResponsePrivate, UserUpdate, Token, PaginatedPostResponse, ResetPasswordRequest, ChangePasswordRequest, ForgotPasswordRequest
 # Imported UserResponsePublic and UserResponsePrivate instead UserResponse as I changed that 
 
 # Change the response from UserResponse to UserResponsePublic
 
 
-from datetime import timedelta  # import timedelta so we could add our jwt expiry time here
+from datetime import timedelta, UTC, datetime # import timedelta so we could add our jwt expiry time here
 from fastapi.security import OAuth2PasswordRequestForm 
 # OAuth2PasswordRequestForm is used as the input so it could extract the password and username /email for checking 
-from auth import hash_password, CurrentUser, create_access_token, verify_password
+from auth import hash_password, CurrentUser, create_access_token, verify_password, generate_reset_token, hash_reset_token
 # we import our functions for hashing, creating , verifying.
 # We also import our oauth scheme 
 
 from config import settings
+from sqlalchemy import delete as sql_delete
 
 
 # We import only the modules needed for users, we also added the import APIRouter
@@ -133,6 +135,137 @@ async def login_for_access_token(form_data : Annotated[OAuth2PasswordRequestForm
 async def get_current_user(current_user : CurrentUser):
     return current_user
 
+# Note that we are returning 202, instead of 200 here, we also didn't use a response model
+@router.post("/forgot-password", status_code=status.HTTP_202_ACCEPTED)  # I think we used 202, because we accepted the user request to change password as the user forgot it, but what of 200_ok, isn't that the same for all ?
+# I was also told that it is not 200_ok, because the request hasn't gone fully as it doesn't check if the email exists or not, but just tells the user that they have seen their request 
+async def forgot_password(
+    request_data: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+):  # Note that there is no current user dependency so there is no need for the user to be logged in
+    result = await db.execute(
+        select(models.User).where(
+            func.lower(models.User.email) == request_data.email.lower(),
+        ),
+    )
+    user = result.scalars().first()
+
+    if user:
+        await db.execute(
+            sql_delete(models.PasswordResetToken).where(
+                models.PasswordResetToken.user_id == user.id,
+            ),
+        ) # Why sql_delete instead of db.delete() ?
+        # We used sql_delete, because we are trying to delete every single existing token, though db.delete and delete does the same thing technically, for db.delete, we are using a query to fetch a specific row as a result before deleting, for sql_delete, we just delete the entire table, and in the case about, we delete the table for the user that matches that user_id
+
+        token = generate_reset_token()
+        token_hash = hash_reset_token(token)
+        expires_at = datetime.now(UTC) + timedelta(
+            minutes=settings.reset_expire_token_mins
+        )
+
+        reset_token = models.PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+        db.add(reset_token)
+        await db.commit()
+
+        background_tasks.add_task(
+            send_password_reset_email,
+            to_email=user.email,  # Also notice that we're passing simple data, just like strings here. We're not passing the database session. Background tasks run after the response is sent, so the session may be closed by then. ???
+ 
+            username=user.username,
+            token=token,
+        ) # Also notice that we are passing the token not the token hash here, that is what is sent to the user and not the token hash, while the token_hash is just meant for the database only
+
+    return {
+        "message": "If an account exists with this email, you will receive password reset instructions."
+    }  # we returned a normal message, why ?
+# Now this part here is important for security, so when we return, we're just returning this message here, we always return the same 202 response with the same generic message, whether or not the email exists. We don't say anything like email not found or anything like that. that prevents email enumeration attacks where an attacker tries a bunch of emails to see which ones get a different response so that they know what emails exist on your system. 
+
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+async def reset_password(
+    request_data: ResetPasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+):    # Note that there is no current user dependency so there is no need for the user to be logged in
+    token_hash = hash_reset_token(request_data.token)  # we first convert it to hash to see if it exists in database 
+
+    result = await db.execute(
+        select(models.PasswordResetToken).where(
+            models.PasswordResetToken.token_hash == token_hash,
+        ),
+    )
+    reset_token = result.scalars().first()
+
+    if not reset_token:
+        raise FastapiHttpException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    if reset_token.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):  # why .replace ? # We are using replace because, sqlite by default removes timezones, so after it removes it , we can't just compare that with the database own that has it, so we would replace the sqlite database time with the timezone version, before comparing it, this issue however doesn't exist in postgresql
+        await db.delete(reset_token)
+        await db.commit()
+        raise FastapiHttpException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    result = await db.execute(
+        select(models.User).where(models.User.id == reset_token.user_id),
+    )
+    user = result.scalars().first()
+
+    if not user:
+        raise FastapiHttpException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    user.password_hash = hash_password(request_data.new_password) #if user, then we hash the password and save it
+
+    # However, after we change the password, we then delete all the request tokens in the database, as shown below
+    await db.execute(
+        sql_delete(models.PasswordResetToken).where(
+            models.PasswordResetToken.user_id == user.id,
+        ),
+    )
+
+    await db.commit()
+    return {
+        "message": "Password reset successfully. You can now log in with your new password."
+    }  # we return the a generic message and we do not log the user in, but rather prompt the user to login in themselves
+
+# NOte that we are using /me/password as the endpoint, instead of something like user_id/password, a change of password is a personal something and cannot be done by another person, so we can just do that since we already know the current user
+@router.patch("/me/password", status_code=status.HTTP_200_OK)
+async def change_password(
+    password_data: ChangePasswordRequest,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+):  # Note that there is current user dependency as you must be logged in before you can change you r password as compared to the other two routes 
+    if not verify_password(password_data.current_password, current_user.password_hash):
+        raise FastapiHttpException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    current_user.password_hash = hash_password(password_data.new_password)
+
+    # we would delete the table which all our reset tokens exist too 
+    await db.execute(
+        sql_delete(models.PasswordResetToken).where(
+            models.PasswordResetToken.user_id == current_user.id,
+        ),
+    )
+
+    await db.commit()
+
+    return {"message" : "Password changed successfully"}
+
+
 # Here, we use UserResponsePublic as the response_model 
 @router.get("/{user_id}", response_model=UserResponsePublic)
 async def user(user_id : int, db:Annotated[AsyncSession, Depends(get_db_session)]):
@@ -147,16 +280,23 @@ async def user(user_id : int, db:Annotated[AsyncSession, Depends(get_db_session)
     return existing_user
 
 
-@router.get('/{user_id}/posts',response_model= list[PostResponse])
-async def user_post_page(user_id : int, db: Annotated[AsyncSession, Depends(get_db_session)]):
+@router.get('/{user_id}/posts',response_model= PaginatedPostResponse)
+async def user_post_page(user_id : int, db: Annotated[AsyncSession, Depends(get_db_session)],skip : Annotated[int, Query(ge=0)] = 0, limit : Annotated[int, Query(ge=1, le=100)] = 10):
 
-    result = await db.execute(select(models.User).where(models.User.id == user_id))
+    result = await db.execute(select(models.User).where(models.User.id == user_id).offset(skip).limit(limit))
     existing_user = result.scalars().first()
 
     if not existing_user:
         raise FastapiHttpException(status_code=status.HTTP_404_NOT_FOUND, detail='User not found')
-    
-    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).where(models.Post.user_id == existing_user.id).order_by (models. Post.date_posted.desc()))
+
+    count_result = await db.execute(
+        select(func.count())       # We would add this query for counting the posts in the database
+        .select_from(models.Post)
+        .where(models.Post.user_id == user_id),
+    )
+    total = count_result.scalar() or 0
+
+    result = await db.execute(select(models.Post).options(selectinload(models.Post.author)).where(models.Post.user_id == existing_user.id).order_by (models. Post.date_posted.desc()).offset(skip).limit(limit))  # We would add offset and limit to our database query for posts
     # result = db.execute(select(models.Post).where(models.Post.user_id == user_id))
 
     # Note that lines above (commented and not commented ) both give the same result
@@ -164,7 +304,16 @@ async def user_post_page(user_id : int, db: Annotated[AsyncSession, Depends(get_
 
     posts = result.scalars().all()
 
-    return posts 
+
+    has_more = skip + len(posts) < total
+
+    return PaginatedPostResponse(
+        posts = [PostResponse.model_validate(post) for post in posts],
+        total = total,
+        skip = skip,
+        limit = limit,
+        has_more = has_more,
+    )
 
     
 
