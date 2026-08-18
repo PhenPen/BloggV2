@@ -206,7 +206,7 @@ async def reset_password(
             detail="Invalid or expired reset token",
         )
 
-    if reset_token.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):  # why .replace ? # We are using replace because, sqlite by default removes timezones, so after it removes it , we can't just compare that with the database own that has it, so we would replace the sqlite database time with the timezone version, before comparing it, this issue however doesn't exist in postgresql
+    if reset_token.expires_at< datetime.now(UTC):  # removed the (.replace(tzinfo=UTC) )  # why .replace ? # We are using replace because, sqlite by default removes timezones, so after it removes it , we can't just compare that with the database own that has it, so we would replace the sqlite database time with the timezone version, before comparing it, this issue however doesn't exist in postgresql
         await db.delete(reset_token)
         await db.commit()
         raise FastapiHttpException(

@@ -45,11 +45,14 @@ from config import settings  # We import settings because we want to using the p
 
 @asynccontextmanager     # What does this do ? 
 async def lifespan(_app: FastAPI):    #Life span function, will check what that means later
-    # Startup
-    async with database_engine.begin() as connection:   # what does .begin() do though ? # Probably begins an async connection 
-        await connection.run_sync(Base.metadata.create_all)  # This seems to use the connection to await the result of running a sync function , which is the Base.metadata.create_all that was meant to be just run in sync
-    yield  # Not sure what the yield does but maybe it hands the awaited result ? but it is outside the await connection.run_sync()
+    #async with database_engine.begin() as connection:   # what does .begin() do though ? # Probably begins an async connection 
+        #await connection.run_sync(Base.metadata.create_all)  # This seems to use the connection to await the result of running a sync function , which is the Base.metadata.create_all that was meant to be just run in sync
+    #yield  # Not sure what the yield does but maybe it hands the awaited result ? but it is outside the await connection.run_sync()
     # However, I do know that in this type of function, everything above yield is the startup and everything below yield inside the function is the shutdown
+
+    # Startup
+    yield  # Everything in startup is handled by alembic
+
     # Shutdown
     await database_engine.dispose()
 

@@ -10,16 +10,29 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 
 # Since we are converting code from sync to async, we remove the sync imports and convert it into async
 
+from config import settings
+
+
+
 
 # SQLALCHEMY_DATABASE_URL = "sqlite:///./blog.db"
-SQLALCHEMY_DATABASE_URL = "sqlite+aiosqlite:///./blog.db"
+# SQLALCHEMY_DATABASE_URL = "sqlite+aiosqlite:///./blog.db"
+
+# Now instead of using the SQLite + the aiosqlite driver, we would use postgres, and instead of hardcoding it here, we set it up in our settings and import from there
+
+SQLALCHEMY_DATABASE_URL =settings.db_url
 
 # We also install a driver for sqlite to know how to use async, this driver is known as 'aiosqlite' and then we change our database url to include it
 
 # database_engine = create_engine(SQLALCHEMY_DATABASE_URL,connect_args={"check_same_thread":False})
 
 # we use create_async_engine instead of create_engine
-database_engine = create_async_engine(SQLALCHEMY_DATABASE_URL,connect_args={"check_same_thread":False})
+
+
+# database_engine = create_async_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread":False})
+
+# The connect_args was meant for sqlite to avoid using the same thread, but since we are using postgres, we don't need that
+database_engine = create_async_engine(SQLALCHEMY_DATABASE_URL)
 
 class Base(DeclarativeBase):
     pass

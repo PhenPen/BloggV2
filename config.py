@@ -6,7 +6,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False)
 
     # we would set the env file to .env , by default all env files are normally named .env but you can name it what you named your env file 
-    db_url : str
+    db_user : str
+    db_password : SecretStr
+    db_host : str
+    db_name : str
+
 
     jwt_secret_key : SecretStr 
     jwt_algorithm : str = "HS256"
@@ -29,6 +33,13 @@ class Settings(BaseSettings):
     mail_use_tls: bool = True    # Learnt that TLS meant transport layer security, would have to check up on that later
 
     frontend_url: str = "http://localhost:8000"
+
+    @property
+    def db_url(self) -> str:
+        return (
+            f"postgresql+psycopg://{self.db_user}:"
+            f"{self.db_password.get_secret_value()}@{self.db_host}/{self.db_name}"
+        )
 
 
 settings = Settings()  # type: ignore[call-arg] 
