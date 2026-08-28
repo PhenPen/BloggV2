@@ -6,7 +6,8 @@ from sqlalchemy.schema import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
-from database import Base   
+from database import Base
+from config import settings
 
 class User(Base) :
     __tablename__ = "users"
@@ -37,7 +38,10 @@ class User(Base) :
     @property
     def image_path(self) -> str :
             if self.image_file:
-                return f'/media/profile_pics/{self.image_file}'
+                # return f'/media/profile_pics/{self.image_file}'  # commented this out as we aren't returning or storing files in local storage
+                # AWS links are normally in this format; f"https://{settings.s3_bucket_name}.s3. {settings.s3_region}.amazonaws.com/profile_pics/{self.image_file}", the bucket name placeholder, s3, region place holder and name of file
+                # So we would pass that in ourselves
+                return f"https://{settings.aws_bucket_name}.s3. {settings.aws_default_region}.amazonaws.com/profile_pics/{self.image_file}"
             return "/static/profile_pics/default.jpg"
 
 

@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from PIL import UnidentifiedImageError # This error is raised when an image cannot be opened or any errors for the image occurs 
 # UploadFile is a library from fastAPI used to upload files 
 
-from image_utils import process_profile_image, delete_profile_image # we import our functions used for processing the image and deleting the image in case a user wants upload a picture or delete a profile image too 
+from image_utils import process_profile_image, delete_profile_image, upload_profile_image  # We included the upload_profile_image function so that we upload to AWS3 directly
+ # we import our functions used for processing the image and deleting the image in case a user wants upload a picture or delete a profile image too 
 from email_utils import send_password_reset_email
 
 from starlette.concurrency import run_in_threadpool # Not sure of what this does 
@@ -34,6 +35,9 @@ from auth import hash_password, CurrentUser, create_access_token, verify_passwor
 
 from config import settings
 from sqlalchemy import delete as sql_delete
+
+
+from botocore.exceptions import ClientError  # Exception module for AWS3/Boto client connections
 
 
 # We import only the modules needed for users, we also added the import APIRouter
@@ -425,7 +429,8 @@ async def delete_user(user_id : int, current_user : CurrentUser, db: Annotated[A
     await db.commit()
 
     if old_filename:
-        delete_profile_image(old_filename)
+        await delete_profile_image(old_filename) # We would add await to this as, the delete_profile_image is now an async function
+        # here we delete the old file name if it exists, notice we didn't run this in a separate threadpool, this is because we are just removing the file and not running a full cpu bound operation, unlike the process_profile_image
 
         # We then delete it after a successful commit # Also note that we are deleting the file or file path, not deleting from the database so we aren't meant to use db.delete, the only thing stored in the database is the filename, and that would change after committing 
 
@@ -448,13 +453,27 @@ async def upload_profile_picture(file : UploadFile, user_id : int, current_user 
 
     # Remember we just opened the image as a file to read the content size, now in the try statement condition below, we would attempt to open the content as an Image instead of just a file, now if PIL (which is pillow) can't open it then it returns an error, this is method is much better that assuming the content file type or getting the file type from the user which can pass mischievous file format instead of the usual default image format types
     try : 
-        new_filename = await run_in_threadpool(process_profile_image, content) # What is a threadpool
+        processed_bytes, new_filename = await run_in_threadpool(process_profile_image, content)  # We added processed_bytes because our function returns the bytes and file name  # What is a threadpool
 
         # It seems the reason for the threadpool stuff is that we are trying to run a sync function in an async endpoint , which would block the endpoint, so instead of doing that we run the sync function in a separate thread , while the async loop runs ? 
 
     except UnidentifiedImageError as err:  # If file is not an image or file can't be opened, then this error is raised 
         raise FastapiHttpException(status_code= status.HTTP_400_BAD_REQUEST, detail = "Invalid image file.  Please upload a valid image (JPEG, PNG, GIF, WebP).",) from err
     # I don't get the from err
+
+    # So the try block above is for processing the image, we would write another one for handling the uploading to AWS
+
+    # Upload to S3 (also runs in threadpool via async wrapper)
+    try:
+        await upload_profile_image(processed_bytes, new_filename)
+    except ClientError as err:
+        raise FastapiHttpException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload image. Please try again.",
+        ) from err
+
+    # So we would try to upload the image in the try block and if any client exceptions from BOTO, we would collect that and show our own error 
+
 
     old_filename = current_user.image_file # we get the current user image file name or profile picture name, if the user hasn't set a profile picture before it should still remain the static default profile picture
 
@@ -465,7 +484,8 @@ async def upload_profile_picture(file : UploadFile, user_id : int, current_user 
     await db.refresh(current_user) # we commit (save) and refresh the user
 
     if old_filename:
-        delete_profile_image(old_filename) # here we delete the old file name if it exists, notice we didn't run this in a separate threadpool, this is because we are just removing the file and not running a full cpu bound operation, unlike the process_profile_image
+        await delete_profile_image(old_filename)  # We would add await to this as, the delete_profile_image is now an async function
+        # here we delete the old file name if it exists, notice we didn't run this in a separate threadpool, this is because we are just removing the file and not running a full cpu bound operation, unlike the process_profile_image
 
     # Now if you notice, we are committing first before before deleting the old file name, this is because if we have any weird scenario whereby the database commit fails , we instead of deleting the old file name already , we would still have the file name.
     # In this case, we would make sure the database is committed first, and only then can we delete the old file name 
@@ -488,6 +508,6 @@ async def delete_user_picture(user_id : int, current_user : CurrentUser, db : An
     await db.commit()
     await db.refresh(current_user)
 
-    delete_profile_image(old_file_name)  # we then commit and refresh and only after doing those things successfully, we delete the old file name 
+    await delete_profile_image(old_file_name)  # we then commit and refresh and only after doing those things successfully, we delete the old file name 
 
     return current_user

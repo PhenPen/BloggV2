@@ -34,6 +34,13 @@ class Settings(BaseSettings):
 
     frontend_url: str = "http://localhost:8000"
 
+    # AWS / BOTO Credentials / MOTO fake details
+    aws_bucket_name : str
+    aws_default_region : str
+    aws_access_key_id : SecretStr | None = None
+    aws_secret_access_key : SecretStr | None = None
+    aws_endpoint_url : str | None = None
+
     @property
     def db_url(self) -> str:
         return (

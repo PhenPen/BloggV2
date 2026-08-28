@@ -56,7 +56,7 @@ class PostBase(BaseModel):
 
 class PostResponse(PostBase):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id :int 
     user_id : int 
     date_posted :datetime  # Using a type hint of datetime automatically serializes the date into a ISO8601 format instead of str , that we won't know it is a datetime object 

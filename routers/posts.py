@@ -132,7 +132,7 @@ async def update_post_partial(post_id :int, updated_post : PostUpdate,current_us
     
     # Added the check below because we are checking if current user id is the same as the post we are attempting to update
     if existing_post.user_id != current_user.id:
-        raise FastapiHttpException(status.HTTP_403_FORBIDDEN, "Not authorized to update post")
+        raise FastapiHttpException(status.HTTP_403_FORBIDDEN, "Not authorized to update this post")
 
     # def update_post_full and def update_post_partial are the same , just that we removed the check for user_id.
     # We do not want someone changing ownership of a post through partial update (patch)
