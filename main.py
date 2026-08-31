@@ -32,7 +32,7 @@ from typing import Annotated # Now what is Annotated
 from sqlalchemy.ext.asyncio import AsyncSession # Imported async session to use instead of normal sessions as sync would normally use
 
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 
 import models  # We import all our database models   
 from database import Base, database_engine, get_db_session  # We import Base which is just Declarative Base in a nutshell, database_engine which is our engine for database connections and get_db_session, which is our function for returning database sessions 
@@ -76,6 +76,18 @@ app.include_router(users_router.router,prefix= "/api/users" , tags= ['Users'])
 # I will check it later  # Checked this , the reason why the name exists is so that if we change the name of the function, it's reference name would still be the name we gave it in the decorator.
 
 # For example, if I'm using url_for(), if the name argument exists in the decorator, FastAPI would use it first else it uses the function name
+
+
+
+@app.get("/health",name="health")
+async def health_check(db : Annotated[AsyncSession, Depends(get_db_session)]):
+
+    try : 
+        await db.execute(text("SELECT 1"))
+    except Exception as exc:
+        raise FastapiHttpException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable") from exc
+
+    return {"status" : "healthy"}
 
 #Home / Posts
 #@app.get('/', include_in_schema=False,name='home')
