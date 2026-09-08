@@ -64,12 +64,15 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Adds security headers; routes may override with stricter values."""
 
+    # Tight allowlist: our own origin plus the two CDNs the templates and
+    # Swagger UI depend on (Bootstrap via jsDelivr, Google Fonts). The
+    # templates pair these with SRI integrity hashes.
     CSP = (
         "default-src 'self'; "
         "img-src 'self' data: https:; "
-        "style-src 'self' 'unsafe-inline'; "
-        "font-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "connect-src 'self'; "
         "frame-ancestors 'none'; "
         "base-uri 'self'; "
