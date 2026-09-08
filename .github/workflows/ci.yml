@@ -13,6 +13,14 @@ permissions:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    # Throwaway credentials for the ephemeral postgres service below. They
+    # exist only inside this ~2 minute run and are never deployed anywhere;
+    # real secrets live in .env (gitignored) and never enter git.
+    env:
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: 127.0.0.1
+      DB_NAME: test_blog
     services:
       # A throwaway Postgres exactly like tests/conftest.py expects:
       #   postgresql+asyncpg://postgres:postgres@127.0.0.1/test_blog
