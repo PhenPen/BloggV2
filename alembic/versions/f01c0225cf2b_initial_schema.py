@@ -7,9 +7,9 @@ Create Date: 2026-08-18 21:27:51.125615
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'f01c0225cf2b'
@@ -42,7 +42,8 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('token_hash')
     )
-    op.create_index(op.f('ix_password_reset_tokens_id'), 'password_reset_tokens', ['id'], unique=False)
+    op.create_index(op.f('ix_password_reset_tokens_id'),
+                    'password_reset_tokens', ['id'], unique=False)
     op.create_table('posts',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('title', sa.String(), nullable=False),

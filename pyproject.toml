@@ -1,0 +1,59 @@
+[project]
+name = "fastapi-blog"
+version = "0.1.0"
+description = "Async FastAPI blog with JWT auth, S3 profile pictures, and password reset."
+requires-python = ">=3.12"
+dependencies = [
+    "aiosmtplib>=5.1",
+    "alembic>=1.19",
+    "boto3>=1.43",
+    "email-validator>=2.3",
+    "fastapi>=0.136,<1",
+    "Jinja2>=3.1",
+    "mypy-boto3-s3>=1.43",
+    "Pillow>=12",
+    "psycopg[binary]>=3.3",
+    "pwdlib[argon2]>=0.3",
+    "pydantic>=2.13,<3",
+    "pydantic-settings>=2.14,<3",
+    "PyJWT>=2.13",
+    "python-multipart>=0.0.26",
+    "SQLAlchemy>=2.0,<3",
+    "uvicorn[standard]>=0.46",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project.optional-dependencies]
+dev = [
+    "asyncpg>=0.31",
+    "httpx>=0.28",
+    "moto>=5.2",
+    "pytest>=9.1",
+    "pytest-anyio>=0.1",
+    "ruff>=0.12",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["templates/**/*.html", "static/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+# Tests deliberately carry verbose educational comments (up to ~190 chars).
+# Keep E (non-E501), F, I strict; exempt only line length there.
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]

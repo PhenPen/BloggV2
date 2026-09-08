@@ -1,0 +1,52 @@
+# Development + single-VPS deployment stack.
+#   docker compose up -d --build
+# Requires docker-compose.yml alongside `.env` (all DB vars come from it).
+#
+# Production notes:
+#   - The app port is bound to 127.0.0.1 only; terminate TLS with a reverse
+#     proxy (Caddy/nginx) in front, which also sets X-Forwarded-* headers.
+#   - COOKIE_SECURE must be true and ALLOWED_HOSTS must list your domain.
+#   - Point AWS_ENDPOINT_URL to real S3 (empty) — the bucket itself stays
+#     private; image reads go through pre-signed URLs.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      # The postgres image creates its user/db from these three vars; we feed
+      # them from the app's own .env so there is exactly one source of truth.
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready speaks the psql protocol (no credentials needed for isready)
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Inside Compose the database host is the service name, not 127.0.0.1.
+      DB_HOST: db
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  postgres_data:

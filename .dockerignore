@@ -1,0 +1,30 @@
+# Everything in this file never reaches the image build context.
+# Dependencies are declared in pyproject.toml and installed inside the image,
+# so code can change without re-sending a venv or VCS history.
+
+# Secrets / local data
+.env
+*.db
+*.sqlite
+media/
+
+# Python bytecode + envs
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Not needed in the runtime image
+.git/
+.gitignore
+tests/
+docs/
+code_review.md
+PRODUCTION_NOTES.md
+AGENTS.md
+
+# Editor / OS cruft
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,11 +1,11 @@
+from io import BytesIO  # This would be probably for upload of profile pictures
+from pathlib import Path  # For file paths
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from  httpx import AsyncClient
+from httpx import AsyncClient
 
 from tests.conftest import auth_header, create_test_user, login_user
-
-from io import BytesIO  # This would be probably for upload of profile pictures
-from pathlib import Path # For file paths
-from unittest.mock import AsyncMock, patch
 
 
 @pytest.mark.anyio
@@ -36,7 +36,7 @@ async def test_create_user_duplicate_email(client: AsyncClient):
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Email already registered"
+    assert response.json()["detail"] == "Email already exists"
 
 
 @pytest.mark.anyio
@@ -55,7 +55,7 @@ async def test_create_user_success(client: AsyncClient):
     assert data["username"] == "newuser"
     assert data["email"] == "newuser@example.com"
     assert "id" in data
-    assert "image_path" in data
+    assert "image_url" in data
     assert "password" not in data
     assert "password_hash" not in data
 
@@ -78,7 +78,7 @@ async def test_upload_profile_picture(client: AsyncClient, mocked_aws):
     data = response.json()
     assert data["image_file"] is not None  # We would check it is not None to be sure the upload went
     assert data["image_file"].endswith(".jpg")
-    assert "s3" in data["image_path"]   # since it is an s3 URL, it should contain s3 in it
+    assert "s3" in data["image_url"]   # presigned URLs point at the S3 bucket
 
     # After this test, we would check the s3 bucket itself to check if the upload entered the bucket
 
@@ -93,7 +93,7 @@ async def test_forgot_password_sends_email(client: AsyncClient):
     await create_test_user(client)
 
     with patch(  # we imported this from unittmock, dunno why 
-        "routers.users.send_password_reset_email",
+        "app.routers.users.send_password_reset_email",
         new_callable=AsyncMock,
     ) as mock_send:
         response = await client.post(

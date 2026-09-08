@@ -1,7 +1,22 @@
-### dotenv ###
+# Environment / secrets — never commit real values
 .env
 
-### Database Files ###
+# Python build artifacts + bytecode cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+
+# Databases
 *.sqlite
 *.db
 
+# Editor / OS cruft
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

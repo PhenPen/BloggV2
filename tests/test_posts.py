@@ -1,7 +1,11 @@
 import pytest
-from  httpx import AsyncClient
+from httpx import AsyncClient
 
-from tests.conftest import auth_header, create_test_user, login_user   # We imported this because we didn't use pytest.fixture decorator on the helper functions 
+from tests.conftest import (  # We imported this because we didn't use pytest.fixture decorator on the helper functions 
+    auth_header,
+    create_test_user,
+    login_user,
+)
 
 # We also didn't import the rest because they are fixtures, and pytest automatically imports any fixture in conftest into any test files
 
@@ -79,7 +83,9 @@ async def test_create_post_unauthorized(client: AsyncClient):
     )  # Notice that no authorization header was passed in, so we won't be authorized
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "Not authenticated"
+    assert response.json()["detail"] == "Invalid or expired token"
+    # (auth.get_current_user returns the same message for missing OR invalid
+    # credentials -- deliberately, to avoid leaking which keys exist)
 
 
 
@@ -133,7 +139,7 @@ async def test_update_post_wrong_user(client: AsyncClient):
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Not authorized to update this post"
+    assert response.json()["detail"] == "Not authorized to modify this post"
 
 
 @pytest.mark.anyio

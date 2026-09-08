@@ -1,7 +1,6 @@
 import os
 from collections.abc import AsyncGenerator
 
-
 # Setting testing environmental values
 #os.environ["DATABASE_URL"] = (
 #    "postgresql+psycopg://bloguser:blogpass@localhost/#test_blog"
@@ -35,6 +34,18 @@ os.environ["S3_REGION"] = "us-east-1"
 os.environ["AWS_ACCESS_KEY_ID"] = "testing"
 os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
 os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+# The .env file sets AWS_ENDPOINT_URL to http://127.0.0.1:5000 (the local
+# moto dev server). Without clearing this, boto3 clients inside the test
+# try to reach that endpoint *instead* of the mock, causing a connection
+# refused error.  Clear it here so the mock_aws patch intercepts all calls.
+os.environ["AWS_ENDPOINT_URL"] = ""
+
+# Test-environment overrides for the production middlewares/limiters:
+# httpx's ASGITransport sends ``Host: test``; TrustedHostMiddleware would 400 it.
+# Rate-limit ceilings are raised so the suite can repeat logins/resets freely.
+os.environ["ALLOWED_HOSTS"] = "localhost,127.0.0.1,test,testserver"
+os.environ["RATE_LIMIT_LOGIN_PER_MINUTE"] = "10000"
+os.environ["RATE_LIMIT_RESET_PER_MINUTE"] = "10000"
 
 # You might be wondering why we duplicated the two pieces of code above, well, our app uses the first piece of code, that is one that pydantic settings would read from, however, BOTO3 SDK has hardcoded variables, that we would need to set, so we would set both just to be sure
 
@@ -49,12 +60,16 @@ import boto3
 import pytest
 from httpx import ASGITransport, AsyncClient
 from moto import mock_aws
-from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncEngine, create_async_engine, AsyncSession
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import NullPool
 
-from database import Base, get_db_session
-from main import app
-
+from app.database import Base, get_db_session
+from app.main import app
 
 # You would notice that some functions are synchronous and the others are asynchronous, we already know that async is used when a task is taking time , and is not using the CPU.
 # So for our first function, we left it as a sync function because it only returns the string "asyncio" and it doesn't do anything
@@ -230,6 +245,11 @@ async def login_user(
         },
     )
     assert response.status_code == 200, f"Failed to login: {response.text}"
+
+    # Token-only API client: drop the session cookie the login route also sets.
+    # Bearer-header auth (the documented API path) bypasses CSRF, which is
+    # intentional; cookie + CSRF behavior is covered in test_security.py.
+    client.cookies.clear()
     return response.json()["access_token"]
 
 

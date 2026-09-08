@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -6,12 +7,9 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-
-import models  #noqa: F401
-from config import settings
-from database import Base
-
-import sys
+from app import models  # noqa: F401
+from app.config import settings
+from app.database import Base
 
 # Add this fix for Windows + psycopg3
 if sys.platform == "win32":

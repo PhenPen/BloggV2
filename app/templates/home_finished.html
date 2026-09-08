@@ -1,0 +1,139 @@
+{% extends "layout_finished.html" %}
+{% block content %}
+  <div id="postsContainer">
+  {% for post in posts %}
+    <article class="content-section py-3 px-4 mb-4">
+      <div class="d-flex align-items-start gap-4">
+        <img class="rounded-circle article-img flex-shrink-0"
+             src="{{ post.author.image_url }}"
+             alt="{{ post.author.username }}'s profile picture"
+             width="64"
+             height="64"
+             loading="lazy">
+
+             <!-- I'm guessing that since post.author back populates to users.post, we can do post.author.username  ?-->
+             <!-- I checked and I was correct, it is because when it backpopulates, they become basically the same object, so post.author is the same with user.post, so since we can call user.post.image_path, we can also do the same for post.author.image_path ?-->
+             <!-- We also changed the alt from post.author to post.author.username ?-->
+             
+             <!-- Commented out the src below to change it from the hardcoded path in the src below to the dynamic path in the src above-->
+             <!-- src="{{url_for('static',path='profile_pics/default.jpg')}}" -->
+        <div class="flex-grow-1">
+          <div class="article-metadata mb-2">
+            <!-- <a class="me-2" href="">{{ post.author }}</a> -->
+            <!-- Changed the post.author to post.author.username and changed the href from #, which is regarded as a deadlink, to urlfor as that retrieves the function and makes it a valid link-->
+            
+             <a class="me-2" href=" {{ url_for('user_posts',user_id = post.author.id) }}">{{ post.author.username }}</a>
+             <!-- url_for(), always takes a function that is defined, as you can see, we defined user_post_page in our main.py , and then if any parameters in the function, we pass that in as you an see we passed in what user_id should contain -->
+
+
+            <!-- <small class="text-body-secondary">{{ post.date_posted }}</small> -->
+            <small class="text-body-secondary">{{ post.date_posted.strftime("%B %d, %Y") }}</small>
+
+            <!-- Before post.date_posted was a string, so we just left it like that but now if you check models.py, post.date_posted is a datetime object, so we can format it using strftime, since it is in ISO 8601 format and we want to make it friendly for the frontend-->
+          </div>
+          <h2>
+            <a class="article-title" href="{{ url_for('post_page', post_id=post.id) }}">{{ post.title }}</a>
+          </h2>
+          <p class="article-content">{{ post.content }}</p>
+        </div>
+      </div>
+    </article>
+  {% endfor %}
+</div>
+
+  {% if has_more %}
+    <div class="text-center mb-4">
+      <button type="button" class="btn btn-outline-primary" id="loadMoreBtn">Load More Posts</button>
+    </div>
+  {% endif %} 
+{% endblock content %}
+
+
+{% block scripts %}
+  <script type="module">
+  import { escapeHtml, formatDate } from '/static/js/utils.js';
+
+  // Pagination state - initialized from server-rendered values
+  let currentOffset = {{ limit }};  // Start after server-rendered posts // NOTE that the current offset starts at limit instead of offset because the first limit of posts is already rendered
+
+  // Recall that we would render the posts first because we would want something to display on our home page and also for google bots to find content to scrape over so as to detect us
+  const limit = {{ limit }};
+  let hasMore = {{ 'true' if has_more else 'false' }};
+
+  const postsContainer = document.getElementById('postsContainer');
+  const loadMoreBtn = document.getElementById('loadMoreBtn');
+
+  // Create HTML for a single post (matching server-rendered structure)
+  function createPostHTML(post) {
+    // NOTE : Escaped HTML
+    return `
+      <article class="content-section py-3 px-4 mb-4">
+        <div class="d-flex align-items-start gap-4">
+          <img class="rounded-circle article-img flex-shrink-0" src="${escapeHtml(post.author.image_url)}" alt="${escapeHtml(post.author.username)}'s profile picture" width="64" height="64" loading="lazy">
+          <div class="flex-grow-1">
+            <div class="article-metadata mb-2">
+              <a class="me-2" href="/users/${post.author.id}/posts">${escapeHtml(post.author.username)}</a>
+              <small class="text-body-secondary">${formatDate(post.date_posted)}</small>
+            </div>
+            <h2>
+              <a class="article-title" href="/posts/${post.id}">${escapeHtml(post.title)}</a>
+            </h2>
+            <p class="article-content">${escapeHtml(post.content)}</p>
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  // Load more posts from the API
+  async function loadMorePosts() {
+    // Disable button and show loading state
+    loadMoreBtn.disabled = true;
+    loadMoreBtn.textContent = 'Loading...';
+
+    let errorOccurred = false;
+
+    try {
+      const response = await fetch(`/api/posts?skip=${currentOffset}&limit=${limit}`);
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch posts');
+      }
+
+      const data = await response.json();
+
+      // Append new posts to the container
+      for (const post of data.posts) {
+        postsContainer.insertAdjacentHTML('beforeend', createPostHTML(post));
+      }
+
+      // Update pagination state
+      currentOffset += data.posts.length;
+      hasMore = data.has_more;
+
+      // Hide button if no more posts
+      if (!hasMore) {
+        loadMoreBtn.classList.add('d-none');
+      }
+    } catch (error) {
+      errorOccurred = true;
+      console.error('Error loading posts:', error);
+      // Show error message and keep button enabled for retry
+      loadMoreBtn.textContent = 'Error - Click to Retry';
+      loadMoreBtn.disabled = false;
+    } finally {
+      // Re-enable button and reset text only if no error occurred
+      if (!errorOccurred && hasMore) {
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.textContent = 'Load More Posts';
+      }
+    }
+  }
+
+  // Add click handler if button exists
+  if (loadMoreBtn) {
+    loadMoreBtn.addEventListener('click', loadMorePosts);
+  }
+  </script>
+{% endblock scripts %}
+
